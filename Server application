@@ -1,1 +1,237 @@
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.externals import joblib
+from sklearn.impute import SimpleImputer
+import numpy as np
+import pandas as pd
+from pandas import DataFrame
+from flask import Flask, request, jsonify
+import requests
+import pickle
+import os
 
+app = Flask(__name__)
+
+#model_x = joblib.load(open('modelo_x.pk2','rb'))
+#model_y = joblib.load(open('modelo_y.pk2','rb'))
+
+@app.route("/")
+def verifica_api_online():
+  return "API ONLINE v1.0", 200
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    if request.method == 'POST':
+        
+        data = request.get_json(force=True)
+        try:
+            model_x = joblib.load(open('modelo_x.pk2','rb'))
+            model_y = joblib.load(open('modelo_y.pk2','rb'))
+            #data = request.get_json(force=True)
+            
+            prediction_x = model_x.predict(np.array([list(data.values())]))
+            prediction_y = model_y.predict(np.array([list(data.values())]))
+            output_x = round(prediction_x[0],3)
+            output_y = round(prediction_y[0],3)
+            resposta = {'posicao_x': float(output_x), 'posicao_y': float(output_y)}
+
+            
+        except ValueError:
+            return jsonify("erro")
+                                 
+        return jsonify(resposta)
+
+
+@app.route('/retrain', methods=['POST'])
+def retrain():
+    if request.method == 'POST':
+
+        data = request.get_json(force=True)
+        try:
+            model_x = joblib.load(open('modelo_x.pk2','rb'))
+            model_y = joblib.load(open('modelo_y.pk2','rb'))
+
+            training_set_x = joblib.load(open('x_training_X.pkl','rb')) 
+            training_labels_x = joblib.load(open('y_training_X.pkl', 'rb'))
+            training_set_y = joblib.load(open('x_training_Y.pkl','rb')) 
+            training_labels_y = joblib.load(open('y_training_Y.pkl', 'rb'))
+            print(training_set_x)
+            print (training_labels_x)
+
+            #dfx = pd.DataFrame(training_set_x)
+            #dfx_ = pd.DataFrame(training_labels_x)
+           # print(dFx)
+           # print(dFx_)
+        
+            dfx = pd.DataFrame(data)
+            dfy = pd.DataFrame(data)
+          #  print (df)
+            dfx = dfx.T
+            dfy = dfy.T
+            print (dfx)
+           # dfx_ = dfx.drop('posicao_y', axis=1)
+           # dfy_ = dfy.drop('posicao_x', axis=1)
+            # print (dfx)
+            #print (dfy)
+                       
+            dfx_training_set = dfx.drop('posicao_x', axis=1)
+            dfx_training_set =dfx_training_set.drop('posicao_y', axis=1).values
+            dfy_training_set = dfy.drop('posicao_x', axis=1)
+            dfy_training_set = dfy_training_set.drop('posicao_y', axis=1).values
+            print (dfx_training_set)
+            #print (dfy_training_set)
+            #print (dfy_training_set)
+            #dfx_training_set_ = dfx_training_set[::-1]
+            #dfy_training_set_ = dfy_training_set[::-1]
+            #print (dfx_training_set_)
+            #print (dfy_training_set)
+            dfx_training_labels = dfx['posicao_x'].values
+            dfy_training_labels = dfy['posicao_y'].values
+            print (dfx_training_labels)
+            #print (dfy_training_labels)4
+            #print (dfy_training_labels)
+            #dfx_training_labels_ = dfx_training_labels[::-1]
+            #dfy_training_labels_ = dfy_training_labels[::-1]
+           # print (dfx_training_labels)
+            #print (dfy_training_labels_)
+           
+          # Treinamento
+          # Coordenadas X
+            dfx_training_set_c = np.concatenate((training_set_x, dfx_training_set))
+            print(dfx_training_set_c)
+            dfx_training_labels_c = np.concatenate((training_labels_x, dfx_training_labels))
+            print(dfx_training_labels_c)
+        
+            k = 8
+            knn = KNeighborsRegressor(n_neighbors=k)
+            knn.fit(dfx_training_set_c, dfx_training_labels_c)
+            
+            acuracia = knn.score(dfx_training_set_c, dfx_training_labels_c)
+            print(acuracia) 
+        
+            os.remove("modelo_x.pk2")
+            os.remove("x_training_X.pkl")
+            os.remove("y_training_X.pkl")
+
+            joblib.dump(knn, "modelo_x.pk2")
+            joblib.dump(dfx_training_set_c, "x_training_X.pkl")
+            joblib.dump(dfx_training_labels_c, "y_training_X.pkl")
+            
+
+            model_x = joblib.load(open('modelo_x.pk2','rb'))
+            
+            
+          # Treinamento
+          # Coordenadas Y
+            dfy_training_set_c = np.concatenate((training_set_y, dfy_training_set))
+            dfy_training_labels_c = np.concatenate((training_labels_y, dfy_training_labels))
+            
+            print(dfy_training_set_c)
+            print(dfy_training_labels_c)
+        
+            k = 8
+            knn = KNeighborsRegressor(n_neighbors=k)
+            knn.fit(dfy_training_set_c, dfy_training_labels_c)
+            
+            acuracia = knn.score(dfy_training_set_c, dfy_training_labels_c)
+            print(acuracia) 
+            
+            os.remove("modelo_y.pk2")
+            os.remove("x_training_Y.pkl")
+            os.remove("y_training_Y.pkl")
+
+            joblib.dump(knn, "modelo_y.pk2")
+            joblib.dump(dfy_training_set_c, "x_training_Y.pkl")
+            joblib.dump(dfy_training_labels_c, "y_training_Y.pkl")
+            
+
+            model_y = joblib.load(open('modelo_y.pk2','rb'))
+                                    
+        except ValueError:
+            return jsonify("Erro duranre treinamento - {}")
+
+        return jsonify("Modelo treinado com sucesso")
+    
+    
+    
+    
+@app.route('/elimina', methods=['POST'])
+def elimina():
+    if request.method == 'POST':
+        try:
+            training_set_x = joblib.load(open('x_training_X.pkl','rb')) 
+            training_labels_x = joblib.load(open('y_training_X.pkl', 'rb'))
+            training_set_y = joblib.load(open('x_training_Y.pkl','rb')) 
+            training_labels_y = joblib.load(open('y_training_Y.pkl', 'rb'))
+                       
+            
+            #Coordenada X
+            dfx = pd.DataFrame(training_set_x)
+            nx = (len(training_set_x))
+            nx = nx - 1
+            dfx_ = pd.DataFrame(training_labels_x)
+            nx_ = (len(training_labels_x))
+            nx_ = nx_ - 1
+            print(dfx)
+            print(dfx_)
+         
+            dfx = dfx.drop(nx)
+            dfx_ = dfx_.drop(nx_)
+            print(dfx)
+            print(dfx_)
+
+            k = 3
+            knn = KNeighborsRegressor(n_neighbors=k)
+            knn.fit(dfx, dfx_)
+            os.remove("modelo_x.pk2")
+            os.remove("x_training_X.pkl")
+            os.remove("y_training_X.pkl")
+            
+            joblib.dump(knn, "modelo_x.pk2")
+            joblib.dump(dfx, "x_training_X.pkl")
+            joblib.dump(dfx_, "y_training_X.pkl")
+            
+
+            model_x = joblib.load(open('modelo_x.pk2','rb'))
+            
+            
+            #Coordenada Y
+            dfy = pd.DataFrame(training_set_y)
+            ny = (len(training_set_y))
+            ny = ny - 1
+            dfy_ = pd.DataFrame(training_labels_y)
+            ny_ = (len(training_labels_y))
+            ny_ = ny_ - 1
+            print(dfy)
+            print(dfy_)
+            
+            dfy = dfy.drop(ny)
+            dfy_ = dfy_.drop(ny_)
+            print(dfy)
+            print(dfy_)
+            
+            k = 3
+            knn = KNeighborsRegressor(n_neighbors=k)
+            knn.fit(dfy, dfy_) 
+            os.remove("modelo_y.pk2")
+            os.remove("x_training_Y.pkl")
+            os.remove("y_training_Y.pkl")
+
+            joblib.dump(knn, "modelo_y.pk2")
+            joblib.dump(dfy, "x_training_Y.pkl")
+            joblib.dump(dfy_, "y_training_Y.pkl")
+            
+
+            model_y = joblib.load(open('modelo_y.pk2','rb'))
+            
+            
+        except ValueError:
+            return jsonify("erro")
+                                 
+        return jsonify("Linha eliminada com sucesso")
+    
+    
+    
+if __name__ == "__main__":
+  port = int(os.environ.get("PORT", 5000))
+  app.run(host='0.0.0.0', port=port)
